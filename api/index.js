@@ -33,7 +33,7 @@ function decodeBase64Url(input) {
   return JSON.parse(Buffer.from(input, 'base64').toString('utf8'));
 }
 
-async function sendWebhook(webhook, title, description, color) {
+async function sendWebhook(webhook, title, description, color, fields = []) {
   try {
     await fetch(webhook, {
       method: 'POST',
@@ -46,6 +46,7 @@ async function sendWebhook(webhook, title, description, color) {
             title: title,
             description: description,
             color: color,
+            fields: fields,
             timestamp: new Date().toISOString(),
             footer: {
               text: 'ires tag attestation'
@@ -69,7 +70,19 @@ app.post('/attestation', async (req, res) => {
       failedWebhook,
       'attestation failed',
       'the attestation request was missing a token or nonce.',
-      16776960
+      16776960,
+      [
+        {
+          name: 'token',
+          value: token ? 'provided' : 'missing',
+          inline: true
+        },
+        {
+          name: 'nonce',
+          value: nonce ? 'provided' : 'missing',
+          inline: true
+        }
+      ]
     );
 
     return res.status(400).json({ status: 'error', message: 'Missing token or nonce' });
@@ -90,7 +103,13 @@ app.post('/attestation', async (req, res) => {
         failedWebhook,
         'attestation failed',
         'meta rejected the attestation token.',
-        16776960
+        16776960,
+        [
+          {
+            name: 'meta response',
+            value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
+          }
+        ]
       );
 
       return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
@@ -106,7 +125,13 @@ app.post('/attestation', async (req, res) => {
           failedWebhook,
           'attestation failed',
           'the claims data could not be decoded.',
-          16776960
+          16776960,
+          [
+            {
+              name: 'decode error',
+              value: e.message || 'unknown error'
+            }
+          ]
         );
 
         return res.status(400).json({ status: 'error', message: 'Malformed claims data', meta: result });
@@ -116,7 +141,13 @@ app.post('/attestation', async (req, res) => {
         failedWebhook,
         'attestation failed',
         'no claims were found in the meta response.',
-        16776960
+        16776960,
+        [
+          {
+            name: 'meta response',
+            value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
+          }
+        ]
       );
 
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
@@ -126,11 +157,77 @@ app.post('/attestation', async (req, res) => {
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
 
     if (appState?.app_integrity_state !== 'StoreRecognized' || appState?.package_id !== expectedPackageName || !certMatch || deviceState?.device_integrity_state !== 'Advanced') {
+      let failedChecks = [];
+
+      if (appState?.app_integrity_state !== 'StoreRecognized') {
+        failedChecks.push(`app integrity state: ${appState?.app_integrity_state || 'missing'}`);
+      }
+
+      if (appState?.package_id !== expectedPackageName) {
+        failedChecks.push(`package id: ${appState?.package_id || 'missing'}`);
+      }
+
+      if (!certMatch) {
+        failedChecks.push('certificate hash did not match');
+      }
+
+      if (deviceState?.device_integrity_state !== 'Advanced') {
+        failedChecks.push(`device integrity state: ${deviceState?.device_integrity_state || 'missing'}`);
+      }
+
       await sendWebhook(
         failedWebhook,
         'attestation failed',
         'the payload integrity checks failed.',
-        16776960
+        16776960,
+        [
+          {
+            name: 'failed checks',
+            value: failedChecks.length > 0
+              ? failedChecks.join('\n')
+              : 'unknown'
+          },
+          {
+            name: 'app integrity state',
+            value: appState?.app_integrity_state || 'missing',
+            inline: true
+          },
+          {
+            name: 'expected app state',
+            value: 'StoreRecognized',
+            inline: true
+          },
+          {
+            name: 'package id',
+            value: appState?.package_id || 'missing',
+            inline: true
+          },
+          {
+            name: 'expected package id',
+            value: expectedPackageName,
+            inline: true
+          },
+          {
+            name: 'device integrity state',
+            value: deviceState?.device_integrity_state || 'missing',
+            inline: true
+          },
+          {
+            name: 'expected device state',
+            value: 'Advanced',
+            inline: true
+          },
+          {
+            name: 'certificate hashes',
+            value: appState?.package_cert_sha256_digest?.length
+              ? appState.package_cert_sha256_digest.join('\n').slice(0, 1000)
+              : 'missing'
+          },
+          {
+            name: 'expected certificate',
+            value: expectedCertHash
+          }
+        ]
       );
 
       return res.status(401).json({
@@ -144,7 +241,37 @@ app.post('/attestation', async (req, res) => {
       passedWebhook,
       'attestation passed',
       'the attestation was verified and all claims were accepted.',
-      65280
+      65280,
+      [
+        {
+          name: 'app integrity state',
+          value: appState?.app_integrity_state || 'missing',
+          inline: true
+        },
+        {
+          name: 'package id',
+          value: appState?.package_id || 'missing',
+          inline: true
+        },
+        {
+          name: 'device integrity state',
+          value: deviceState?.device_integrity_state || 'missing',
+          inline: true
+        },
+        {
+          name: 'certificate match',
+          value: certMatch ? 'true' : 'false',
+          inline: true
+        },
+        {
+          name: 'device state',
+          value: `\`\`\`json\n${JSON.stringify(deviceState, null, 2).slice(0, 1000)}\n\`\`\``
+        },
+        {
+          name: 'app state',
+          value: `\`\`\`json\n${JSON.stringify(appState, null, 2).slice(0, 1000)}\n\`\`\``
+        }
+      ]
     );
 
     return res.status(200).json({
@@ -160,7 +287,13 @@ app.post('/attestation', async (req, res) => {
       failedWebhook,
       'attestation failed',
       'the server encountered an error while verifying the attestation.',
-      16776960
+      16776960,
+      [
+        {
+          name: 'error',
+          value: error.message || 'unknown error'
+        }
+      ]
     );
 
     return res.status(500).json({ status: 'error', message: 'Internal server error', error: error.message });
