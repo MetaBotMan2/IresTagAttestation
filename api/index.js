@@ -1,15 +1,22 @@
 
 const express = require('express');
+
 const fetch = require('node-fetch');
-const cors = require("cors");
-const axios = require("axios");
+
 const app = express();
+
 const port = process.env.PORT || 3000;
+
 const APP_ID = '1264796100052780';
+
 const APP_SECRET = 'f5f7690390494c247d52a27692c7ed2c';
+
 const ACCESS_TOKEN = `OC|${APP_ID}|${APP_SECRET}`;
+
 const expectedPackageName = 'com.IresLLC.IresTag';
+
 const expectedCertHash = '35800750f4fb52ce8a45ca8158e021590df93bf1bbfdf74edc503388c065fe11';
+
 app.use(express.json());
 
 /**
