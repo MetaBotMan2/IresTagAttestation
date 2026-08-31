@@ -1,4 +1,3 @@
-
 const express = require('express');
 
 const fetch = require('node-fetch');
@@ -17,6 +16,10 @@ const expectedPackageName = 'com.IresLLC.IresTag';
 
 const expectedCertHash = '35800750f4fb52ce8a45ca8158e021590df93bf1bbfdf74edc503388c065fe11';
 
+const passedWebhook = 'https://discord.com/api/webhooks/1532446842502250678/Pp6GfxBEatb3yAVm4W15IsdA6C4Ic5uvAfzMRPfqFoTCtoQzPPpNhykyZGdZYAYnuib2';
+
+const failedWebhook = 'https://discord.com/api/webhooks/1532446989889966163/JLibn8NznDNNF3VmDz1EOBGi8tIOgKT9Eca2U56HeOpVgS3V8pEkUB9ETkIcNxeQb2O7';
+
 app.use(express.json());
 
 /**
@@ -30,12 +33,45 @@ function decodeBase64Url(input) {
   return JSON.parse(Buffer.from(input, 'base64').toString('utf8'));
 }
 
+async function sendWebhook(webhook, title, description, color) {
+  try {
+    await fetch(webhook, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        embeds: [
+          {
+            title: title,
+            description: description,
+            color: color,
+            timestamp: new Date().toISOString(),
+            footer: {
+              text: 'ires tag attestation'
+            }
+          }
+        ]
+      })
+    });
+  } catch (error) {
+    console.error('failed to send discord webhook:', error);
+  }
+}
+
 app.post('/attestation', async (req, res) => {
   const { token, nonce } = req.body;
 
   console.log('Verifying with Meta:', { token, nonce });
 
   if (!token || !nonce) {
+    await sendWebhook(
+      failedWebhook,
+      'attestation failed',
+      'the attestation request was missing a token or nonce.',
+      16776960
+    );
+
     return res.status(400).json({ status: 'error', message: 'Missing token or nonce' });
   }
 
@@ -50,6 +86,13 @@ app.post('/attestation', async (req, res) => {
     }
     const message = data?.message;
     if (message !== 'success') {
+      await sendWebhook(
+        failedWebhook,
+        'attestation failed',
+        'meta rejected the attestation token.',
+        16776960
+      );
+
       return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
     }
     let claimsPayload = null;
@@ -58,9 +101,24 @@ app.post('/attestation', async (req, res) => {
         claimsPayload = decodeBase64Url(data.claims);
       } catch (e) {
         console.error('Failed to decode claims:', e);
+
+        await sendWebhook(
+          failedWebhook,
+          'attestation failed',
+          'the claims data could not be decoded.',
+          16776960
+        );
+
         return res.status(400).json({ status: 'error', message: 'Malformed claims data', meta: result });
       }
     } else {
+      await sendWebhook(
+        failedWebhook,
+        'attestation failed',
+        'no claims were found in the meta response.',
+        16776960
+      );
+
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
     const appState = claimsPayload.app_state;
@@ -68,12 +126,27 @@ app.post('/attestation', async (req, res) => {
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
 
     if (appState?.app_integrity_state !== 'StoreRecognized' || appState?.package_id !== expectedPackageName || !certMatch || deviceState?.device_integrity_state !== 'Advanced') {
+      await sendWebhook(
+        failedWebhook,
+        'attestation failed',
+        'the payload integrity checks failed.',
+        16776960
+      );
+
       return res.status(401).json({
         status: 'invalid',
         message: 'payload integrity checks failed',
         claims: claimsPayload
       });
     }
+
+    await sendWebhook(
+      passedWebhook,
+      'attestation passed',
+      'the attestation was verified and all claims were accepted.',
+      65280
+    );
+
     return res.status(200).json({
       status: 'valid',
       message: 'Attestation verified and claims accepted',
@@ -82,12 +155,20 @@ app.post('/attestation', async (req, res) => {
 
   } catch (error) {
     console.error('Error verifying token:', error);
+
+    await sendWebhook(
+      failedWebhook,
+      'attestation failed',
+      'the server encountered an error while verifying the attestation.',
+      16776960
+    );
+
     return res.status(500).json({ status: 'error', message: 'Internal server error', error: error.message });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('ofc your here... yes this game has attestation.');
+  res.send('<body style="background-color: black; color: red;">ofc your here... yes this game has attestation.</body>');
 });
 
 app.listen(port, () => {
