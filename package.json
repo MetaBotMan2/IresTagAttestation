@@ -1,0 +1,13 @@
+{
+  "name": "meta-attestation-backend",
+  "version": "1.0.0",
+  "description": "Backend for verifying Meta Quest attestation tokens",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.12"
+  }
+}
