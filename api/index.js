@@ -61,9 +61,19 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
 }
 
 app.post('/attestation', async (req, res) => {
-  const { token, nonce } = req.body;
+  const {
+    token,
+    nonce,
+    metaUserId,
+    metaUsername,
+    orgScopedId
+  } = req.body;
 
   console.log('Verifying with Meta:', { token, nonce });
+
+  console.log('Meta Username:', metaUsername || 'unknown');
+  console.log('Oculus User ID:', metaUserId || 'unknown');
+  console.log('OrgScopedID:', orgScopedId || 'unknown');
 
   if (!token || !nonce) {
     await sendWebhook(
@@ -80,6 +90,21 @@ app.post('/attestation', async (req, res) => {
         {
           name: 'nonce',
           value: nonce ? 'provided' : 'missing',
+          inline: true
+        },
+        {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
           inline: true
         }
       ]
@@ -106,6 +131,21 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
+          {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
           }
@@ -128,6 +168,21 @@ app.post('/attestation', async (req, res) => {
           16776960,
           [
             {
+              name: 'Meta username',
+              value: metaUsername || 'unknown',
+              inline: true
+            },
+            {
+              name: 'Oculus User ID',
+              value: metaUserId || 'unknown',
+              inline: true
+            },
+            {
+              name: 'OrgScopedID',
+              value: orgScopedId || 'unknown',
+              inline: true
+            },
+            {
               name: 'decode error',
               value: e.message || 'unknown error'
             }
@@ -143,6 +198,21 @@ app.post('/attestation', async (req, res) => {
         'no claims were found in the meta response.',
         16776960,
         [
+          {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
           {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
@@ -181,6 +251,21 @@ app.post('/attestation', async (req, res) => {
         'the payload integrity checks failed.',
         16776960,
         [
+          {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
           {
             name: 'failed checks',
             value: failedChecks.length > 0
@@ -244,6 +329,21 @@ app.post('/attestation', async (req, res) => {
       65280,
       [
         {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
+          inline: true
+        },
+        {
           name: 'app integrity state',
           value: appState?.app_integrity_state || 'missing',
           inline: true
@@ -289,6 +389,21 @@ app.post('/attestation', async (req, res) => {
       'the server encountered an error while verifying the attestation.',
       16776960,
       [
+        {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
+          inline: true
+        },
         {
           name: 'error',
           value: error.message || 'unknown error'
