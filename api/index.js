@@ -114,7 +114,6 @@ app.post('/attestation', async (req, res) => {
 
       return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
     }
-
     let claimsPayload = null;
     if (typeof data.claims === 'string') {
       try {
@@ -153,7 +152,6 @@ app.post('/attestation', async (req, res) => {
 
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
-
     const appState = claimsPayload.app_state;
     const deviceState = claimsPayload.device_state;
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
@@ -232,14 +230,13 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).type('text').send(
-        "Attestation failed. Make sure you've installed this title through a legitimate store and are using a device with the latest updates.\n\n" +
-        "ERROR CODE: 10015\n\n" +
-        "TRACE ID:\n" +
-        "69cc2a3a2b4edd2cdd319822375f48325b"
-      );
+      return res.status(401).json({
+        status: 'invalid',
+        message: 'payload integrity checks failed',
+        claims: claimsPayload
+      });
     }
-    
+
     await sendWebhook(
       passedWebhook,
       'attestation passed',
@@ -277,12 +274,11 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return res.status(401).type('text').send(
-    "Attestation failed. Make sure you've installed this title through a legitimate store and are using a device with the latest updates.\n\n" +
-    "ERROR CODE: 10015\n\n" +
-    "TRACE ID:\n" +
-    "69cc2a3a2b4edd2cdd319822375f48325b"
-  );
+    return res.status(200).json({
+      status: 'valid',
+      message: 'Attestation verified and claims accepted',
+      claims: claimsPayload
+    });
 
   } catch (error) {
     console.error('Error verifying token:', error);
