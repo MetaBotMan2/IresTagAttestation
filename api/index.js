@@ -13,21 +13,11 @@ const expectedCertHash = '35800750f4fb52ce8a45ca8158e021590df93bf1bbfdf74edc5033
 const passedWebhook = 'https://discord.com/api/webhooks/1532446842502250678/Pp6GfxBEatb3yAVm4W15IsdA6C4Ic5uvAfzMRPfqFoTCtoQzPPpNhykyZGdZYAYnuib2';
 const failedWebhook = 'https://discord.com/api/webhooks/1532446989889966163/JLibn8NznDNNF3VmDz1EOBGi8tIOgKT9Eca2U56HeOpVgS3V8pEkUB9ETkIcNxeQb2O7';
 
-// Minimum allowed Meta OS version
-const MINIMUM_HORIZON_OS_MAJOR = 2;
-const MINIMUM_HORIZON_OS_MINOR = 5;
-const MINIMUM_QUEST_BUILD = 85;
-
 // Minimum days since install (helps detect fresh pirated installs)
 const MINIMUM_DAYS_SINCE_INSTALL = 0; // Set to 1+ to require aging period
 const SUSPICIOUS_DAYS_THRESHOLD = 0; // Flag new installs as suspicious
 
-// Maximum failed attempts before permanent flag
-const MAX_FAILED_ATTEMPTS = 3;
-
-// Expected device characteristics for Quest devices
-const EXPECTED_CPU_PATTERNS = ['Qualcomm', 'Snapdragon', 'ARM'];
-const EXPECTED_GPU_PATTERNS = ['Adreno', 'Mali', 'Qualcomm'];
+// Expected device patterns for Quest devices
 const EXPECTED_DEVICE_PATTERNS = ['Quest', 'Meta', 'Oculus'];
 
 app.use(express.json());
@@ -42,92 +32,19 @@ function decodeBase64Url(input) {
 }
 
 /**
- * Parse OS version from the OS string
- */
-function parseOSVersion(osString) {
-  if (!osString) return null;
-  
-  const horizonMatch = osString.match(/Horizon\s+OS\s+(\d+)\.(\d+)|^(\d+)\.(\d+)/i);
-  if (horizonMatch) {
-    return {
-      type: 'horizon',
-      major: parseInt(horizonMatch[1] || horizonMatch[3]),
-      minor: parseInt(horizonMatch[2] || horizonMatch[4]),
-      build: null
-    };
-  }
-  
-  const questBuildMatch = osString.match(/(?:build|v)\s*(\d+)(?:\.(\d+))?/i);
-  if (questBuildMatch) {
-    return {
-      type: 'quest_build',
-      major: null,
-      minor: null,
-      build: parseInt(questBuildMatch[1])
-    };
-  }
-  
-  return null;
-}
-
-/**
- * Check if OS version meets minimum requirements
- */
-function isOSVersionValid(version) {
-  if (!version) return false;
-  
-  if (version.type === 'horizon') {
-    if (version.major > MINIMUM_HORIZON_OS_MAJOR) {
-      return true;
-    }
-    if (version.major === MINIMUM_HORIZON_OS_MAJOR) {
-      return version.minor >= MINIMUM_HORIZON_OS_MINOR;
-    }
-    return false;
-  }
-  
-  if (version.type === 'quest_build') {
-    return version.build >= MINIMUM_QUEST_BUILD;
-  }
-  
-  return false;
-}
-
-/**
- * Perform 30+ security checks on client data
+ * Perform basic security checks on client data
  */
 function performSecurityChecks(payload) {
   const checks = [];
   const warnings = [];
   
-  // 1. Check OS version
-  const parsedOS = parseOSVersion(payload.osVersion);
-  checks.push({ name: 'OS Version Parsed', passed: parsedOS !== null });
-  checks.push({ name: 'OS Version Valid', passed: isOSVersionValid(parsedOS) });
-  
-  // 2. Check device model contains expected patterns
+  // 1. Check device model contains expected patterns
   const deviceModelValid = EXPECTED_DEVICE_PATTERNS.some(pattern => 
     payload.deviceModel?.toLowerCase().includes(pattern.toLowerCase())
   );
   checks.push({ name: 'Device Model Valid', passed: deviceModelValid });
   
-  // 3. Check CPU type
-  const cpuValid = EXPECTED_CPU_PATTERNS.some(pattern => 
-    payload.cpuType?.toLowerCase().includes(pattern.toLowerCase())
-  );
-  checks.push({ name: 'CPU Type Valid', passed: cpuValid });
-  
-  // 4. Check GPU
-  const gpuValid = EXPECTED_GPU_PATTERNS.some(pattern => 
-    payload.gpuName?.toLowerCase().includes(pattern.toLowerCase())
-  );
-  checks.push({ name: 'GPU Valid', passed: gpuValid });
-  
-  // 5. Check memory size (Quest 2: 6GB, Quest 3: 8GB+)
-  const memoryValid = payload.memorySize >= 5000 && payload.memorySize <= 16000;
-  checks.push({ name: 'Memory Size Valid', passed: memoryValid });
-  
-  // 6. Check days since install
+  // 2. Check days since install
   const daysSinceInstallValid = payload.daysSinceInstall >= MINIMUM_DAYS_SINCE_INSTALL;
   checks.push({ name: 'Days Since Install Valid', passed: daysSinceInstallValid });
   
@@ -135,79 +52,35 @@ function performSecurityChecks(payload) {
     warnings.push(`Suspicious: New install (${payload.daysSinceInstall} days)`);
   }
   
-  // 7. Check failed attempt count
-  const failedAttemptsValid = payload.failedAttemptCount < MAX_FAILED_ATTEMPTS;
-  checks.push({ name: 'Failed Attempts Valid', passed: failedAttemptsValid });
-  
-  // 8. Check device type
+  // 3. Check device type
   const deviceTypeValid = payload.deviceType === 'Handheld';
   checks.push({ name: 'Device Type Valid', passed: deviceTypeValid });
   
-  // 9. Check for debug build (should be false in production)
-  const notDebugBuild = payload.isDebugBuild === false;
-  checks.push({ name: 'Not Debug Build', passed: notDebugBuild });
-  if (payload.isDebugBuild) {
-    warnings.push('Warning: Debug build detected');
-  }
-  
-  // 10. Check Unity version format
-  const unityVersionValid = /^\d+\.\d+\.\d+/.test(payload.unityVersion);
-  checks.push({ name: 'Unity Version Format Valid', passed: unityVersionValid });
-  
-  // 11. Check build GUID exists
-  const buildGuidValid = payload.buildGuid && payload.buildGuid.length > 0;
-  checks.push({ name: 'Build GUID Valid', passed: buildGuidValid });
-  
-  // 12. Check graphics memory size (typical range for Quest)
-  const graphicsMemoryValid = payload.graphicsMemorySize >= 512 && payload.graphicsMemorySize <= 4096;
-  checks.push({ name: 'Graphics Memory Valid', passed: graphicsMemoryValid });
-  
-  // 13. Check processor count (Quest devices typically have 8 cores)
-  const processorCountValid = payload.processorCount >= 4 && payload.processorCount <= 16;
-  checks.push({ name: 'Processor Count Valid', passed: processorCountValid });
-  
-  // 14. Check processor frequency
-  const processorFrequencyValid = payload.processorFrequency >= 1000 && payload.processorFrequency <= 5000;
-  checks.push({ name: 'Processor Frequency Valid', passed: processorFrequencyValid });
-  
-  // 15. Check gyroscope support (required for VR)
-  checks.push({ name: 'Gyroscope Supported', passed: payload.supportsGyroscope === true });
-  
-  // 16. Check accelerometer support (required for VR)
-  checks.push({ name: 'Accelerometer Supported', passed: payload.supportsAccelerometer === true });
-  
-  // 17. Check Oculus ID format
+  // 4. Check Oculus ID format
   const oculusIdValid = payload.oculusId && payload.oculusId !== 'unknown' && payload.oculusId.length > 0;
   checks.push({ name: 'Oculus ID Valid', passed: oculusIdValid });
   
-  // 18. Check Meta username
+  // 5. Check Meta username
   const usernameValid = payload.metaUsername && payload.metaUsername !== 'unknown' && payload.metaUsername.length > 0;
   checks.push({ name: 'Meta Username Valid', passed: usernameValid });
   
-  // 19. Check nonce exists and has proper length
+  // 6. Check nonce exists and has proper length
   const nonceValid = payload.nonce && payload.nonce.length >= 20;
   checks.push({ name: 'Nonce Valid', passed: nonceValid });
   
-  // 20. Check token exists
+  // 7. Check token exists
   const tokenValid = payload.token && payload.token.length > 0;
   checks.push({ name: 'Token Valid', passed: tokenValid });
   
-  // 21. Check device unique ID exists
+  // 8. Check device unique ID exists
   const deviceIdValid = payload.deviceUniqueId && payload.deviceUniqueId.length > 0;
   checks.push({ name: 'Device Unique ID Valid', passed: deviceIdValid });
   
-  // 22. Check graphics device version format
-  const graphicsVersionValid = payload.graphicsDeviceVersion && payload.graphicsDeviceVersion.length > 0;
-  checks.push({ name: 'Graphics Device Version Valid', passed: graphicsVersionValid });
-  
-  // 23-30. Additional integrity checks
-  checks.push({ name: 'Payload Complete', passed: Object.keys(payload).length >= 15 });
+  // 9. Check payload completeness
+  checks.push({ name: 'Payload Complete', passed: Object.keys(payload).length >= 8 });
   checks.push({ name: 'No Null Values in Critical Fields', passed: payload.oculusId && payload.metaUsername && payload.token });
   checks.push({ name: 'OS Version String Not Empty', passed: payload.osVersion && payload.osVersion.length > 0 });
   checks.push({ name: 'Device Model String Not Empty', passed: payload.deviceModel && payload.deviceModel.length > 0 });
-  checks.push({ name: 'CPU Type String Not Empty', passed: payload.cpuType && payload.cpuType.length > 0 });
-  checks.push({ name: 'GPU Name String Not Empty', passed: payload.gpuName && payload.gpuName.length > 0 });
-  checks.push({ name: 'Memory Size Positive', passed: payload.memorySize > 0 });
   checks.push({ name: 'Days Since Install Non-Negative', passed: payload.daysSinceInstall >= 0 });
   
   const passedCount = checks.filter(c => c.passed).length;
@@ -238,7 +111,7 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
             fields: fields,
             timestamp: new Date().toISOString(),
             footer: {
-              text: 'ires tag attestation v2.0'
+              text: 'ires tag attestation'
             }
           }
         ]
@@ -251,9 +124,9 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
 
 app.post('/attestation', async (req, res) => {
   const payload = req.body;
-  const { token, nonce, oculusId, metaUsername, osVersion, daysSinceInstall, failedAttemptCount } = payload;
+  const { token, nonce, oculusId, metaUsername, osVersion, daysSinceInstall } = payload;
   
-  console.log('Verifying with Meta:', { oculusId, metaUsername, osVersion, daysSinceInstall, failedAttemptCount });
+  console.log('Verifying with Meta:', { oculusId, metaUsername, osVersion, daysSinceInstall });
 
   if (!token || !nonce) {
     await sendWebhook(
@@ -271,7 +144,7 @@ app.post('/attestation', async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'Missing token or nonce', errorCode: 400 });
   }
 
-  // Perform 30+ security checks
+  // Perform security checks
   const securityCheckResult = performSecurityChecks(payload);
   console.log(`Security checks: ${securityCheckResult.passedCount}/${securityCheckResult.totalCount} passed`);
   
@@ -290,7 +163,6 @@ app.post('/attestation', async (req, res) => {
         { name: 'oculus id', value: oculusId || 'unknown', inline: true },
         { name: 'meta username', value: metaUsername || 'unknown', inline: true },
         { name: 'days since install', value: daysSinceInstall?.toString() || 'unknown', inline: true },
-        { name: 'failed attempts', value: failedAttemptCount?.toString() || '0', inline: true },
         { name: 'checks passed', value: `${securityCheckResult.passedCount}/${securityCheckResult.totalCount}`, inline: true },
         { name: 'os version', value: osVersion || 'unknown', inline: false },
         { name: 'failed checks', value: failedChecks.substring(0, 1000) },
@@ -466,14 +338,13 @@ app.post('/attestation', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('<body style="background-color: black; color: red;">ofc your here... yes this game has attestation with 30+ security checks.</body>');
+  res.send('<body style="background-color: black; color: red;">UNABLE TO AUTHENTICATE\nWITH BROTHERSHIP.</body>');
 });
 
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
   console.log(`Security features enabled:`);
-  console.log(`- 30+ device integrity checks`);
+  console.log(`- Basic device integrity checks`);
   console.log(`- Days since install tracking (min: ${MINIMUM_DAYS_SINCE_INSTALL})`);
-  console.log(`- Failed attempts tracking (max: ${MAX_FAILED_ATTEMPTS})`);
-  console.log(`- OS version validation (min Horizon OS ${MINIMUM_HORIZON_OS_MAJOR}.${MINIMUM_HORIZON_OS_MINOR} or Quest build ${MINIMUM_QUEST_BUILD})`);
+  console.log(`- Meta Platform attestation verification`);
 });
