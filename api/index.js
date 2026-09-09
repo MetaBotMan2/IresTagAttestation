@@ -61,9 +61,19 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
 }
 
 app.post('/attestation', async (req, res) => {
-  const { token, nonce } = req.body;
+  const {
+    token,
+    nonce,
+    metaUserId,
+    metaUsername,
+    orgScopedId
+  } = req.body;
 
   console.log('Verifying with Meta:', { token, nonce });
+
+  console.log('Meta Username:', metaUsername || 'unknown');
+  console.log('Oculus User ID:', metaUserId || 'unknown');
+  console.log('OrgScopedID:', orgScopedId || 'unknown');
 
   if (!token || !nonce) {
     await sendWebhook(
@@ -80,6 +90,21 @@ app.post('/attestation', async (req, res) => {
         {
           name: 'nonce',
           value: nonce ? 'provided' : 'missing',
+          inline: true
+        },
+        {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
           inline: true
         }
       ]
@@ -106,6 +131,21 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
+          {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
           }
@@ -114,7 +154,6 @@ app.post('/attestation', async (req, res) => {
 
       return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
     }
-
     let claimsPayload = null;
     if (typeof data.claims === 'string') {
       try {
@@ -128,6 +167,21 @@ app.post('/attestation', async (req, res) => {
           'the claims data could not be decoded.',
           16776960,
           [
+            {
+              name: 'Meta username',
+              value: metaUsername || 'unknown',
+              inline: true
+            },
+            {
+              name: 'Oculus User ID',
+              value: metaUserId || 'unknown',
+              inline: true
+            },
+            {
+              name: 'OrgScopedID',
+              value: orgScopedId || 'unknown',
+              inline: true
+            },
             {
               name: 'decode error',
               value: e.message || 'unknown error'
@@ -145,6 +199,21 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
+          {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
           }
@@ -153,7 +222,6 @@ app.post('/attestation', async (req, res) => {
 
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
-
     const appState = claimsPayload.app_state;
     const deviceState = claimsPayload.device_state;
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
@@ -183,6 +251,21 @@ app.post('/attestation', async (req, res) => {
         'the payload integrity checks failed.',
         16776960,
         [
+          {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
           {
             name: 'failed checks',
             value: failedChecks.length > 0
@@ -232,20 +315,34 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).type('text').send(
-        "Attestation failed. Make sure you've installed this title through a legitimate store and are using a device with the latest updates.\n\n" +
-        "ERROR CODE: 10015\n\n" +
-        "TRACE ID:\n" +
-        "69cc2a3a2b4edd2cdd319822375f48325b"
-      );
+      return res.status(401).json({
+        status: 'invalid',
+        message: 'payload integrity checks failed',
+        claims: claimsPayload
+      });
     }
-    
+
     await sendWebhook(
       passedWebhook,
       'attestation passed',
       'the attestation was verified and all claims were accepted.',
       65280,
       [
+        {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
+          inline: true
+        },
         {
           name: 'app integrity state',
           value: appState?.app_integrity_state || 'missing',
@@ -277,12 +374,11 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return res.status(401).type('text').send(
-    "Attestation failed. Make sure you've installed this title through a legitimate store and are using a device with the latest updates.\n\n" +
-    "ERROR CODE: 10015\n\n" +
-    "TRACE ID:\n" +
-    "69cc2a3a2b4edd2cdd319822375f48325b"
-  );
+    return res.status(200).json({
+      status: 'valid',
+      message: 'Attestation verified and claims accepted',
+      claims: claimsPayload
+    });
 
   } catch (error) {
     console.error('Error verifying token:', error);
@@ -293,6 +389,21 @@ app.post('/attestation', async (req, res) => {
       'the server encountered an error while verifying the attestation.',
       16776960,
       [
+        {
+          name: 'Meta username',
+          value: metaUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
+          inline: true
+        },
         {
           name: 'error',
           value: error.message || 'unknown error'
