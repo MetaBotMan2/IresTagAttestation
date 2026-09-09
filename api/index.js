@@ -1,4 +1,5 @@
 const express = require('express');
+
 const fetch = require('node-fetch');
 
 const app = express();
@@ -60,61 +61,37 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
 }
 
 /**
- * Checks an org-scoped Meta user ID.
- * @param {string} orgscope - Meta org-scoped ID
- * @returns {Object|false} - Meta user information
- */
-async function checkOrgscope(orgscope) {
-  try {
-    const res = await fetch(
-      `https://graph.oculus.com/${encodeURIComponent(orgscope)}?access_token=${ACCESS_TOKEN}&fields=org_scoped_id,alias`
-    );
-
-    if (res.status === 200) {
-      return res.json();
-    }
-
-    console.error('Org scope lookup failed:', res.status);
-    return false;
-  } catch (error) {
-    console.error('Org scope lookup error:', error);
-    return false;
-  }
-}
-
-/**
  * Fetches user information from Meta Graph API
  * @param {string} userId - The Oculus user ID from claims
- * @param {string} orgscope - The org scoped ID from claims
- * @returns {Object} - User information
+ * @returns {Object} - User information (username, org_scoped_id, id)
  */
-async function fetchMetaUserInfo(userId, orgscope) {
+async function fetchMetaUserInfo(userId) {
   try {
-    let metaUsername = 'unknown';
-    let metaUserId = userId || 'unknown';
-    let orgScopedId = orgscope || 'unknown';
-
-    if (orgscope) {
-      const orgUser = await checkOrgscope(orgscope);
-
-      if (orgUser) {
-        metaUsername = orgUser.alias || 'unknown';
-        orgScopedId = orgUser.org_scoped_id || orgscope;
-      }
+    const url = `https://graph.oculus.com/${userId}?fields=name,username,id,org_scoped_id&access_token=${ACCESS_TOKEN}`;
+    console.log(`Fetching user info from Meta: ${url}`);
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error('Error fetching user info:', data.error);
+      return {
+        metaUsername: 'unknown',
+        metaUserId: userId || 'unknown',
+        orgScopedId: 'unknown'
+      };
     }
 
     return {
-      metaUsername,
-      metaUserId,
-      orgScopedId
+      metaUsername: data.username || data.name || 'unknown',
+      metaUserId: data.id || userId || 'unknown',
+      orgScopedId: data.org_scoped_id || 'unknown'
     };
   } catch (error) {
     console.error('Failed to fetch user info:', error);
-
     return {
       metaUsername: 'unknown',
       metaUserId: userId || 'unknown',
-      orgScopedId: orgscope || 'unknown'
+      orgScopedId: 'unknown'
     };
   }
 }
@@ -153,26 +130,20 @@ app.post('/attestation', async (req, res) => {
   try {
     const url = `https://graph.oculus.com/platform_integrity/verify?token=${token}&access_token=${ACCESS_TOKEN}`;
     console.log(`Fetching attestation from Meta: ${url}`);
-
     const response = await fetch(url);
     const result = await response.json();
-
     let data = result.data;
-
     if (Array.isArray(data)) {
       data = data[0];
     }
-
     const message = data?.message;
-
+    
     let claimsPayload = null;
-
     if (typeof data.claims === 'string') {
       try {
         claimsPayload = decodeBase64Url(data.claims);
       } catch (e) {
         console.error('Failed to decode claims:', e);
-
         await sendWebhook(
           failedWebhook,
           'attestation failed',
@@ -185,12 +156,7 @@ app.post('/attestation', async (req, res) => {
             }
           ]
         );
-
-        return res.status(400).json({
-          status: 'error',
-          message: 'Malformed claims data',
-          meta: result
-        });
+        return res.status(400).json({ status: 'error', message: 'Malformed claims data', meta: result });
       }
     } else {
       await sendWebhook(
@@ -205,36 +171,16 @@ app.post('/attestation', async (req, res) => {
           }
         ]
       );
-
-      return res.status(400).json({
-        status: 'error',
-        message: 'No claims found in Meta response',
-        meta: result
-      });
+      return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
 
-    // Extract user information from claims
-    const userIdFromClaims =
-      claimsPayload.user_id ||
-      claimsPayload.oculus_user_id ||
-      claimsPayload.sub;
-
-    const orgscope =
-      claimsPayload.org_scoped_id ||
-      claimsPayload.org_scope_id ||
-      claimsPayload.orgscope ||
-      claimsPayload.org_scope;
-
-    const {
-      metaUsername,
-      metaUserId,
-      orgScopedId
-    } = await fetchMetaUserInfo(userIdFromClaims, orgscope);
+    // Extract user ID from claims and fetch real user data from Meta API
+    const userIdFromClaims = claimsPayload.user_id || claimsPayload.oculus_user_id || claimsPayload.sub;
+    const { metaUsername, metaUserId, orgScopedId } = await fetchMetaUserInfo(userIdFromClaims);
 
     console.log('Meta Username:', metaUsername);
     console.log('Oculus User ID:', metaUserId);
     console.log('OrgScopedID:', orgScopedId);
-    console.log('Nonce:', nonce);
 
     if (message !== 'success') {
       await sendWebhook(
@@ -243,11 +189,6 @@ app.post('/attestation', async (req, res) => {
         'meta rejected the attestation token.',
         16776960,
         [
-          {
-            name: 'Nonce',
-            value: nonce || 'unknown',
-            inline: false
-          },
           {
             name: 'Meta username',
             value: metaUsername,
@@ -259,7 +200,7 @@ app.post('/attestation', async (req, res) => {
             inline: true
           },
           {
-            name: 'Org Scope ID',
+            name: 'OrgScopedID',
             value: orgScopedId,
             inline: true
           },
@@ -270,19 +211,13 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).json({
-        status: 'invalid',
-        message: 'Attestation failed',
-        meta: result
-      });
+      return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
     }
-
     const appState = claimsPayload.app_state;
     const deviceState = claimsPayload.device_state;
 
     // Check if security update is pending
     const securityUpdatePendingDays = deviceState?.security_update_pending_days;
-
     if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays !== 0) {
       await sendWebhook(
         failedWebhook,
@@ -313,33 +248,20 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).json({
-        [`PLEASE UPDATE YOUR HEADSET TO THE LATEST VERSION TO PLAY IRES TAG. C: ${security_update_pending_days}`]: true
-      });
+     return res.status(401).json({[`PLEASE UPDATE YOUR HEADSET TO THE LATEST VERSION TO PLAY IRES TAG. C: ${security_update_pending_days}`]: true});
     }
 
-    const certMatch = appState?.package_cert_sha256_digest?.some(
-      (cert) => cert.toLowerCase() === expectedCertHash.toLowerCase()
-    );
+    const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
 
-    if (
-      appState?.app_integrity_state !== 'StoreRecognized' ||
-      appState?.package_id !== expectedPackageName ||
-      !certMatch ||
-      deviceState?.device_integrity_state !== 'Advanced'
-    ) {
+    if (appState?.app_integrity_state !== 'StoreRecognized' || appState?.package_id !== expectedPackageName || !certMatch || deviceState?.device_integrity_state !== 'Advanced') {
       let failedChecks = [];
 
       if (appState?.app_integrity_state !== 'StoreRecognized') {
-        failedChecks.push(
-          `app integrity state: ${appState?.app_integrity_state || 'missing'}`
-        );
+        failedChecks.push(`app integrity state: ${appState?.app_integrity_state || 'missing'}`);
       }
 
       if (appState?.package_id !== expectedPackageName) {
-        failedChecks.push(
-          `package id: ${appState?.package_id || 'missing'}`
-        );
+        failedChecks.push(`package id: ${appState?.package_id || 'missing'}`);
       }
 
       if (!certMatch) {
@@ -347,9 +269,7 @@ app.post('/attestation', async (req, res) => {
       }
 
       if (deviceState?.device_integrity_state !== 'Advanced') {
-        failedChecks.push(
-          `device integrity state: ${deviceState?.device_integrity_state || 'missing'}`
-        );
+        failedChecks.push(`device integrity state: ${deviceState?.device_integrity_state || 'missing'}`);
       }
 
       await sendWebhook(
@@ -436,23 +356,18 @@ app.post('/attestation', async (req, res) => {
       65280,
       [
         {
-          name: 'Nonce',
-          value: nonce || 'unknown',
-          inline: false
-        },
-        {
-          name: 'Meta Username',
+          name: 'Meta username',
           value: metaUsername || 'unknown',
           inline: true
         },
         {
-          name: 'Org Scope ID',
-          value: orgScopedId || 'unknown',
+          name: 'Oculus User ID',
+          value: metaUserId || 'unknown',
           inline: true
         },
         {
-          name: 'Oculus ID',
-          value: metaUserId || 'unknown',
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
           inline: true
         },
         {
@@ -528,11 +443,7 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-      error: error.message
-    });
+    return res.status(500).json({ status: 'error', message: 'Internal server error', error: error.message });
   }
 });
 
