@@ -242,13 +242,17 @@ app.post('/attestation', async (req, res) => {
           },
           {
             name: 'security_update_pending_days',
-            value: security_update_pending_days.toString(),
+            value: securityUpdatePendingDays.toString(),
             inline: true
           }
         ]
       );
 
-     return res.status(401).json({[`PLEASE UPDATE YOUR HEADSET TO THE LATEST VERSION TO PLAY IRES TAG. C: ${security_update_pending_days}`]: true});
+      return res.status(401).json({
+        status: 'invalid',
+        message: 'Device has pending security update',
+        security_update_pending_days: securityUpdatePendingDays
+      });
     }
 
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
