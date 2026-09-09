@@ -67,6 +67,15 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
  */
 async function fetchMetaUserInfo(userId) {
   try {
+    if (!userId || userId === 'undefined' || userId === 'null') {
+      console.error('Invalid userId provided to fetchMetaUserInfo:', userId);
+      return {
+        metaUsername: 'unknown',
+        metaUserId: 'unknown',
+        orgScopedId: 'unknown'
+      };
+    }
+
     const url = `https://graph.oculus.com/${userId}?fields=id,name,username,org_scoped_id&access_token=${ACCESS_TOKEN}`;
     console.log(`Fetching user info from Meta: ${url}`);
     const response = await fetch(url);
@@ -83,10 +92,17 @@ async function fetchMetaUserInfo(userId) {
       };
     }
 
+    // Extract data from response
+    const username = data.username || data.name || 'unknown';
+    const id = data.id || userId || 'unknown';
+    const orgScopedId = data.org_scoped_id || 'unknown';
+
+    console.log(`Extracted - Username: ${username}, ID: ${id}, OrgScopedID: ${orgScopedId}`);
+
     return {
-      metaUsername: data.username || data.name || 'unknown',
-      metaUserId: data.id || userId || 'unknown',
-      orgScopedId: data.org_scoped_id || 'unknown'
+      metaUsername: username,
+      metaUserId: id,
+      orgScopedId: orgScopedId
     };
   } catch (error) {
     console.error('Failed to fetch user info:', error);
@@ -96,6 +112,26 @@ async function fetchMetaUserInfo(userId) {
       orgScopedId: 'unknown'
     };
   }
+}
+
+/**
+ * Extracts user information from the attestation claims
+ */
+function extractUserFromClaims(claimsPayload) {
+  // Try multiple possible field names where the user ID might be stored
+  const userId = claimsPayload.user_id || 
+                claimsPayload.oculus_user_id || 
+                claimsPayload.sub || 
+                claimsPayload.aud || 
+                claimsPayload['https://graph.oculus.com/user_id'] ||
+                claimsPayload['https://www.oculus.com/user_id'] ||
+                claimsPayload.uid ||
+                claimsPayload.id;
+
+  console.log('Extracted user ID from claims:', userId);
+  console.log('Full claims payload:', JSON.stringify(claimsPayload, null, 2));
+
+  return userId;
 }
 
 app.post('/attestation', async (req, res) => {
@@ -134,6 +170,9 @@ app.post('/attestation', async (req, res) => {
     console.log(`Fetching attestation from Meta: ${url}`);
     const response = await fetch(url);
     const result = await response.json();
+    
+    console.log('Full attestation response:', JSON.stringify(result, null, 2));
+    
     let data = result.data;
     if (Array.isArray(data)) {
       data = data[0];
@@ -141,10 +180,37 @@ app.post('/attestation', async (req, res) => {
     const message = data?.message;
     
     let claimsPayload = null;
+    let metaUsername = 'unknown';
+    let metaUserId = 'unknown';
+    let orgScopedId = 'unknown';
+
     if (typeof data.claims === 'string') {
       try {
         claimsPayload = decodeBase64Url(data.claims);
         console.log('Decoded claims:', JSON.stringify(claimsPayload, null, 2));
+        
+        // Extract user ID from claims
+        const userIdFromClaims = extractUserFromClaims(claimsPayload);
+        
+        if (userIdFromClaims && userIdFromClaims !== 'undefined' && userIdFromClaims !== 'null') {
+          // Fetch user info from Meta API using the extracted user ID
+          const userInfo = await fetchMetaUserInfo(userIdFromClaims);
+          metaUsername = userInfo.metaUsername;
+          metaUserId = userInfo.metaUserId;
+          orgScopedId = userInfo.orgScopedId;
+        } else {
+          console.error('No valid user ID found in claims');
+          // Try to get user info from the claims directly if available
+          if (claimsPayload.username) {
+            metaUsername = claimsPayload.username;
+          }
+          if (claimsPayload.org_scoped_id) {
+            orgScopedId = claimsPayload.org_scoped_id;
+          }
+          if (claimsPayload.user_id) {
+            metaUserId = claimsPayload.user_id;
+          }
+        }
       } catch (e) {
         console.error('Failed to decode claims:', e);
         await sendWebhook(
@@ -162,6 +228,7 @@ app.post('/attestation', async (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Malformed claims data', meta: result });
       }
     } else {
+      console.error('No claims string found in data');
       await sendWebhook(
         failedWebhook,
         'attestation failed',
@@ -177,20 +244,9 @@ app.post('/attestation', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
 
-    // Extract user ID from claims - try multiple possible field names
-    const userIdFromClaims = claimsPayload.user_id || 
-                            claimsPayload.oculus_user_id || 
-                            claimsPayload.sub || 
-                            claimsPayload.aud;
-    
-    console.log('User ID from claims:', userIdFromClaims);
-    
-    // Fetch user info from Meta API
-    const { metaUsername, metaUserId, orgScopedId } = await fetchMetaUserInfo(userIdFromClaims);
-
-    console.log('Meta Username:', metaUsername);
-    console.log('Oculus User ID:', metaUserId);
-    console.log('OrgScopedID:', orgScopedId);
+    console.log('Final Meta Info - Username:', metaUsername);
+    console.log('Final Meta Info - User ID:', metaUserId);
+    console.log('Final Meta Info - OrgScopedID:', orgScopedId);
 
     if (message !== 'success') {
       await sendWebhook(
@@ -201,17 +257,17 @@ app.post('/attestation', async (req, res) => {
         [
           {
             name: 'Meta username',
-            value: metaUsername,
+            value: metaUsername || 'unknown',
             inline: true
           },
           {
             name: 'Oculus User ID',
-            value: metaUserId,
+            value: metaUserId || 'unknown',
             inline: true
           },
           {
             name: 'OrgScopedID',
-            value: orgScopedId,
+            value: orgScopedId || 'unknown',
             inline: true
           },
           {
@@ -223,8 +279,9 @@ app.post('/attestation', async (req, res) => {
 
       return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
     }
-    const appState = claimsPayload.app_state;
-    const deviceState = claimsPayload.device_state;
+    
+    const appState = claimsPayload.app_state || claimsPayload['https://graph.oculus.com/app_state'] || {};
+    const deviceState = claimsPayload.device_state || claimsPayload['https://graph.oculus.com/device_state'] || {};
 
     // Check if security update is pending
     const securityUpdatePendingDays = deviceState?.security_update_pending_days;
@@ -423,7 +480,12 @@ app.post('/attestation', async (req, res) => {
     return res.status(200).json({
       status: 'valid',
       message: 'Attestation verified and claims accepted',
-      claims: claimsPayload
+      claims: claimsPayload,
+      metaInfo: {
+        username: metaUsername,
+        userId: metaUserId,
+        orgScopedId: orgScopedId
+      }
     });
 
   } catch (error) {
