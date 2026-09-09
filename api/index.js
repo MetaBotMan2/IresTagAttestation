@@ -1,16 +1,23 @@
 const express = require('express');
+
 const fetch = require('node-fetch');
+
 const app = express();
+
 const port = process.env.PORT || 3000;
 
 const APP_ID = '1264796100052780';
+
 const APP_SECRET = 'f5f7690390494c247d52a27692c7ed2c';
+
 const ACCESS_TOKEN = `OC|${APP_ID}|${APP_SECRET}`;
 
 const expectedPackageName = 'com.IresLLC.IresTag';
+
 const expectedCertHash = '35800750f4fb52ce8a45ca8158e021590df93bf1bbfdf74edc503388c065fe11';
 
 const passedWebhook = 'https://discord.com/api/webhooks/1532446842502250678/Pp6GfxBEatb3yAVm4W15IsdA6C4Ic5uvAfzMRPfqFoTCtoQzPPpNhykyZGdZYAYnuib2';
+
 const failedWebhook = 'https://discord.com/api/webhooks/1532446989889966163/JLibn8NznDNNF3VmDz1EOBGi8tIOgKT9Eca2U56HeOpVgS3V8pEkUB9ETkIcNxeQb2O7';
 
 app.use(express.json());
@@ -54,9 +61,9 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
 }
 
 app.post('/attestation', async (req, res) => {
-  const { token, nonce, oculusId, metaUsername, deviceModel, deviceUniqueId } = req.body;
+  const { token, nonce } = req.body;
 
-  console.log('Verifying with Meta:', { token, nonce, oculusId, metaUsername, deviceModel });
+  console.log('Verifying with Meta:', { token, nonce });
 
   if (!token || !nonce) {
     await sendWebhook(
@@ -73,26 +80,6 @@ app.post('/attestation', async (req, res) => {
         {
           name: 'nonce',
           value: nonce ? 'provided' : 'missing',
-          inline: true
-        },
-        {
-          name: 'oculus id',
-          value: oculusId || 'not provided',
-          inline: true
-        },
-        {
-          name: 'meta username',
-          value: metaUsername || 'not provided',
-          inline: true
-        },
-        {
-          name: 'device model',
-          value: deviceModel || 'not provided',
-          inline: true
-        },
-        {
-          name: 'device unique id',
-          value: deviceUniqueId ? deviceUniqueId.substring(0, 16) + '...' : 'not provided',
           inline: true
         }
       ]
@@ -119,21 +106,6 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
-            name: 'oculus id',
-            value: oculusId || 'unknown',
-            inline: true
-          },
-          {
-            name: 'meta username',
-            value: metaUsername || 'unknown',
-            inline: true
-          },
-          {
-            name: 'device model',
-            value: deviceModel || 'unknown',
-            inline: true
-          },
-          {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
           }
@@ -157,21 +129,6 @@ app.post('/attestation', async (req, res) => {
           16776960,
           [
             {
-              name: 'oculus id',
-              value: oculusId || 'unknown',
-              inline: true
-            },
-            {
-              name: 'meta username',
-              value: metaUsername || 'unknown',
-              inline: true
-            },
-            {
-              name: 'device model',
-              value: deviceModel || 'unknown',
-              inline: true
-            },
-            {
               name: 'decode error',
               value: e.message || 'unknown error'
             }
@@ -187,21 +144,6 @@ app.post('/attestation', async (req, res) => {
         'no claims were found in the meta response.',
         16776960,
         [
-          {
-            name: 'oculus id',
-            value: oculusId || 'unknown',
-            inline: true
-          },
-          {
-            name: 'meta username',
-            value: metaUsername || 'unknown',
-            inline: true
-          },
-          {
-            name: 'device model',
-            value: deviceModel || 'unknown',
-            inline: true
-          },
           {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
@@ -241,21 +183,6 @@ app.post('/attestation', async (req, res) => {
         'the payload integrity checks failed.',
         16776960,
         [
-          {
-            name: 'oculus id',
-            value: oculusId || 'unknown',
-            inline: true
-          },
-          {
-            name: 'meta username',
-            value: metaUsername || 'unknown',
-            inline: true
-          },
-          {
-            name: 'device model',
-            value: deviceModel || 'unknown',
-            inline: true
-          },
           {
             name: 'failed checks',
             value: failedChecks.length > 0
@@ -320,26 +247,6 @@ app.post('/attestation', async (req, res) => {
       65280,
       [
         {
-          name: 'oculus id',
-          value: oculusId || 'unknown',
-          inline: true
-        },
-        {
-          name: 'meta username',
-          value: metaUsername || 'unknown',
-          inline: true
-        },
-        {
-          name: 'device model',
-          value: deviceModel || 'unknown',
-          inline: true
-        },
-        {
-          name: 'device unique id',
-          value: deviceUniqueId ? deviceUniqueId.substring(0, 16) + '...' : 'unknown',
-          inline: true
-        },
-        {
           name: 'app integrity state',
           value: appState?.app_integrity_state || 'missing',
           inline: true
@@ -386,21 +293,6 @@ app.post('/attestation', async (req, res) => {
       'the server encountered an error while verifying the attestation.',
       16776960,
       [
-        {
-          name: 'oculus id',
-          value: oculusId || 'unknown',
-          inline: true
-        },
-        {
-          name: 'meta username',
-          value: metaUsername || 'unknown',
-          inline: true
-        },
-        {
-          name: 'device model',
-          value: deviceModel || 'unknown',
-          inline: true
-        },
         {
           name: 'error',
           value: error.message || 'unknown error'
