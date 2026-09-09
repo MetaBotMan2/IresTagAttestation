@@ -92,7 +92,6 @@ async function fetchMetaUserInfo(userId) {
       };
     }
 
-    // Extract data from response
     const username = data.username || data.name || 'unknown';
     const id = data.id || userId || 'unknown';
     const orgScopedId = data.org_scoped_id || 'unknown';
@@ -114,33 +113,22 @@ async function fetchMetaUserInfo(userId) {
   }
 }
 
-/**
- * Extracts user information from the attestation claims
- */
-function extractUserFromClaims(claimsPayload) {
-  // Try multiple possible field names where the user ID might be stored
-  const userId = claimsPayload.user_id || 
-                claimsPayload.oculus_user_id || 
-                claimsPayload.sub || 
-                claimsPayload.aud || 
-                claimsPayload['https://graph.oculus.com/user_id'] ||
-                claimsPayload['https://www.oculus.com/user_id'] ||
-                claimsPayload.uid ||
-                claimsPayload.id;
-
-  console.log('Extracted user ID from claims:', userId);
-  console.log('Full claims payload:', JSON.stringify(claimsPayload, null, 2));
-
-  return userId;
-}
-
 app.post('/attestation', async (req, res) => {
   const {
     token,
-    nonce
+    nonce,
+    oculusUserId,
+    oculusUsername,
+    orgScopedId
   } = req.body;
 
-  console.log('Verifying with Meta:', { token, nonce });
+  console.log('Verifying with Meta:', { 
+    token: token ? `${token.substring(0, 30)}...` : 'missing', 
+    nonce,
+    oculusUserId,
+    oculusUsername,
+    orgScopedId
+  });
 
   if (!token || !nonce) {
     await sendWebhook(
@@ -157,6 +145,21 @@ app.post('/attestation', async (req, res) => {
         {
           name: 'nonce',
           value: nonce ? 'provided' : 'missing',
+          inline: true
+        },
+        {
+          name: 'Oculus Username',
+          value: oculusUsername || 'unknown',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Challenge Nonce',
+          value: nonce || 'unknown',
           inline: true
         }
       ]
@@ -180,35 +183,27 @@ app.post('/attestation', async (req, res) => {
     const message = data?.message;
     
     let claimsPayload = null;
-    let metaUsername = 'unknown';
-    let metaUserId = 'unknown';
-    let orgScopedId = 'unknown';
+    let metaUsername = oculusUsername || 'unknown';
+    let metaUserId = oculusUserId || 'unknown';
+    let metaOrgScopedId = orgScopedId || 'unknown';
 
     if (typeof data.claims === 'string') {
       try {
         claimsPayload = decodeBase64Url(data.claims);
         console.log('Decoded claims:', JSON.stringify(claimsPayload, null, 2));
         
-        // Extract user ID from claims
-        const userIdFromClaims = extractUserFromClaims(claimsPayload);
-        
-        if (userIdFromClaims && userIdFromClaims !== 'undefined' && userIdFromClaims !== 'null') {
-          // Fetch user info from Meta API using the extracted user ID
-          const userInfo = await fetchMetaUserInfo(userIdFromClaims);
-          metaUsername = userInfo.metaUsername;
-          metaUserId = userInfo.metaUserId;
-          orgScopedId = userInfo.orgScopedId;
-        } else {
-          console.error('No valid user ID found in claims');
-          // Try to get user info from the claims directly if available
-          if (claimsPayload.username) {
-            metaUsername = claimsPayload.username;
-          }
-          if (claimsPayload.org_scoped_id) {
-            orgScopedId = claimsPayload.org_scoped_id;
-          }
-          if (claimsPayload.user_id) {
-            metaUserId = claimsPayload.user_id;
+        // If we didn't get user info from Unity, try to extract from claims
+        if (!oculusUserId || oculusUserId === 'unknown') {
+          const userIdFromClaims = claimsPayload.user_id || 
+                                  claimsPayload.oculus_user_id || 
+                                  claimsPayload.sub || 
+                                  claimsPayload.aud;
+          
+          if (userIdFromClaims && userIdFromClaims !== 'undefined' && userIdFromClaims !== 'null') {
+            const userInfo = await fetchMetaUserInfo(userIdFromClaims);
+            metaUsername = userInfo.metaUsername;
+            metaUserId = userInfo.metaUserId;
+            metaOrgScopedId = userInfo.orgScopedId;
           }
         }
       } catch (e) {
@@ -222,6 +217,21 @@ app.post('/attestation', async (req, res) => {
             {
               name: 'decode error',
               value: e.message || 'unknown error'
+            },
+            {
+              name: 'Oculus Username',
+              value: metaUsername || 'unknown',
+              inline: true
+            },
+            {
+              name: 'OrgScopedID',
+              value: metaOrgScopedId || 'unknown',
+              inline: true
+            },
+            {
+              name: 'Challenge Nonce',
+              value: nonce || 'unknown',
+              inline: true
             }
           ]
         );
@@ -238,6 +248,21 @@ app.post('/attestation', async (req, res) => {
           {
             name: 'meta response',
             value: `\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1000)}\n\`\`\``
+          },
+          {
+            name: 'Oculus Username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: metaOrgScopedId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Challenge Nonce',
+            value: nonce || 'unknown',
+            inline: true
           }
         ]
       );
@@ -246,7 +271,8 @@ app.post('/attestation', async (req, res) => {
 
     console.log('Final Meta Info - Username:', metaUsername);
     console.log('Final Meta Info - User ID:', metaUserId);
-    console.log('Final Meta Info - OrgScopedID:', orgScopedId);
+    console.log('Final Meta Info - OrgScopedID:', metaOrgScopedId);
+    console.log('Challenge Nonce:', nonce);
 
     if (message !== 'success') {
       await sendWebhook(
@@ -256,7 +282,7 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
-            name: 'Meta username',
+            name: 'Oculus Username',
             value: metaUsername || 'unknown',
             inline: true
           },
@@ -267,7 +293,12 @@ app.post('/attestation', async (req, res) => {
           },
           {
             name: 'OrgScopedID',
-            value: orgScopedId || 'unknown',
+            value: metaOrgScopedId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Challenge Nonce',
+            value: nonce || 'unknown',
             inline: true
           },
           {
@@ -293,7 +324,7 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
-            name: 'Meta username',
+            name: 'Oculus Username',
             value: metaUsername || 'unknown',
             inline: true
           },
@@ -304,7 +335,12 @@ app.post('/attestation', async (req, res) => {
           },
           {
             name: 'OrgScopedID',
-            value: orgScopedId || 'unknown',
+            value: metaOrgScopedId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Challenge Nonce',
+            value: nonce || 'unknown',
             inline: true
           },
           {
@@ -350,7 +386,7 @@ app.post('/attestation', async (req, res) => {
         16776960,
         [
           {
-            name: 'Meta username',
+            name: 'Oculus Username',
             value: metaUsername || 'unknown',
             inline: true
           },
@@ -361,7 +397,12 @@ app.post('/attestation', async (req, res) => {
           },
           {
             name: 'OrgScopedID',
-            value: orgScopedId || 'unknown',
+            value: metaOrgScopedId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Challenge Nonce',
+            value: nonce || 'unknown',
             inline: true
           },
           {
@@ -427,7 +468,7 @@ app.post('/attestation', async (req, res) => {
       65280,
       [
         {
-          name: 'Meta username',
+          name: 'Oculus Username',
           value: metaUsername || 'unknown',
           inline: true
         },
@@ -438,7 +479,12 @@ app.post('/attestation', async (req, res) => {
         },
         {
           name: 'OrgScopedID',
-          value: orgScopedId || 'unknown',
+          value: metaOrgScopedId || 'unknown',
+          inline: true
+        },
+        {
+          name: 'Challenge Nonce',
+          value: nonce || 'unknown',
           inline: true
         },
         {
@@ -484,7 +530,8 @@ app.post('/attestation', async (req, res) => {
       metaInfo: {
         username: metaUsername,
         userId: metaUserId,
-        orgScopedId: orgScopedId
+        orgScopedId: metaOrgScopedId,
+        challengeNonce: nonce
       }
     });
 
@@ -498,7 +545,7 @@ app.post('/attestation', async (req, res) => {
       16776960,
       [
         {
-          name: 'Meta username',
+          name: 'Oculus Username',
           value: 'unknown',
           inline: true
         },
@@ -509,6 +556,11 @@ app.post('/attestation', async (req, res) => {
         },
         {
           name: 'OrgScopedID',
+          value: 'unknown',
+          inline: true
+        },
+        {
+          name: 'Challenge Nonce',
           value: 'unknown',
           inline: true
         },
