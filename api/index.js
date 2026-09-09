@@ -224,6 +224,46 @@ app.post('/attestation', async (req, res) => {
     }
     const appState = claimsPayload.app_state;
     const deviceState = claimsPayload.device_state;
+
+    // Check if security update is pending
+    const securityUpdatePendingDays = deviceState?.security_update_pending_days;
+    if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays !== 0) {
+      await sendWebhook(
+        failedWebhook,
+        'attestation failed',
+        'device has a pending security update.',
+        16776960,
+        [
+          {
+            name: 'Meta username',
+            value: metaUsername || 'unknown',
+            inline: true
+          },
+          {
+            name: 'Oculus User ID',
+            value: metaUserId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'OrgScopedID',
+            value: orgScopedId || 'unknown',
+            inline: true
+          },
+          {
+            name: 'security_update_pending_days',
+            value: securityUpdatePendingDays.toString(),
+            inline: true
+          }
+        ]
+      );
+
+      return res.status(401).json({
+        status: 'invalid',
+        message: 'Device has pending security update',
+        security_update_pending_days: securityUpdatePendingDays
+      });
+    }
+
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
 
     if (appState?.app_integrity_state !== 'StoreRecognized' || appState?.package_id !== expectedPackageName || !certMatch || deviceState?.device_integrity_state !== 'Advanced') {
@@ -361,6 +401,11 @@ app.post('/attestation', async (req, res) => {
         {
           name: 'certificate match',
           value: certMatch ? 'true' : 'false',
+          inline: true
+        },
+        {
+          name: 'security updates pending',
+          value: securityUpdatePendingDays?.toString() || '0',
           inline: true
         },
         {
