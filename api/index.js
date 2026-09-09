@@ -67,10 +67,12 @@ async function sendWebhook(webhook, title, description, color, fields = []) {
  */
 async function fetchMetaUserInfo(userId) {
   try {
-    const url = `https://graph.oculus.com/${userId}?fields=name,username,id,org_scoped_id&access_token=${ACCESS_TOKEN}`;
+    const url = `https://graph.oculus.com/${userId}?fields=id,name,username,org_scoped_id&access_token=${ACCESS_TOKEN}`;
     console.log(`Fetching user info from Meta: ${url}`);
     const response = await fetch(url);
     const data = await response.json();
+    
+    console.log('Meta API Response:', JSON.stringify(data, null, 2));
     
     if (data.error) {
       console.error('Error fetching user info:', data.error);
@@ -142,6 +144,7 @@ app.post('/attestation', async (req, res) => {
     if (typeof data.claims === 'string') {
       try {
         claimsPayload = decodeBase64Url(data.claims);
+        console.log('Decoded claims:', JSON.stringify(claimsPayload, null, 2));
       } catch (e) {
         console.error('Failed to decode claims:', e);
         await sendWebhook(
@@ -174,8 +177,15 @@ app.post('/attestation', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
     }
 
-    // Extract user ID from claims and fetch real user data from Meta API
-    const userIdFromClaims = claimsPayload.user_id || claimsPayload.oculus_user_id || claimsPayload.sub;
+    // Extract user ID from claims - try multiple possible field names
+    const userIdFromClaims = claimsPayload.user_id || 
+                            claimsPayload.oculus_user_id || 
+                            claimsPayload.sub || 
+                            claimsPayload.aud;
+    
+    console.log('User ID from claims:', userIdFromClaims);
+    
+    // Fetch user info from Meta API
     const { metaUsername, metaUserId, orgScopedId } = await fetchMetaUserInfo(userIdFromClaims);
 
     console.log('Meta Username:', metaUsername);
@@ -427,17 +437,17 @@ app.post('/attestation', async (req, res) => {
       [
         {
           name: 'Meta username',
-          value: metaUsername || 'unknown',
+          value: 'unknown',
           inline: true
         },
         {
           name: 'Oculus User ID',
-          value: metaUserId || 'unknown',
+          value: 'unknown',
           inline: true
         },
         {
           name: 'OrgScopedID',
-          value: orgScopedId || 'unknown',
+          value: 'unknown',
           inline: true
         },
         {
