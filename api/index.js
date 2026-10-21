@@ -6,15 +6,15 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 
-const APP_ID = '1264796100052780';
+const APP_ID = '1400391743155874';
 
-const APP_SECRET = 'f5f7690390494c247d52a27692c7ed2c';
+const APP_SECRET = 'c85708e9b1c44795e167be2157fb65eb';
 
 const ACCESS_TOKEN = `OC|${APP_ID}|${APP_SECRET}`;
 
-const expectedPackageName = 'com.IresLLC.IresTag';
+const expectedPackageName = 'com.IresGames.IresTag';
 
-const expectedCertHash = '35800750f4fb52ce8a45ca8158e021590df93bf1bbfdf74edc503388c065fe11';
+const expectedCertHash = '5f44a3b4b429fec37b2dfdb2b454a3fa6012347568d57cde7ad0c8f14a18a654';
 
 const passedWebhook = 'https://discord.com/api/webhooks/1532446842502250678/Pp6GfxBEatb3yAVm4W15IsdA6C4Ic5uvAfzMRPfqFoTCtoQzPPpNhykyZGdZYAYnuib2';
 
