@@ -316,7 +316,7 @@ app.post('/attestation', async (req, res) => {
 
     // so basically ts check if your shit is more than 30
    const securityUpdatePendingDays = deviceState?.security_update_pending_days;
-   if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays > 20) {
+   if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays > 29) {
       await sendWebhook(
         failedWebhook,
         'attestation failed',
