@@ -12,7 +12,7 @@ const APP_SECRET = 'c85708e9b1c44795e167be2157fb65eb';
 
 const ACCESS_TOKEN = `OC|${APP_ID}|${APP_SECRET}`;
 
-const expectedPackageName = 'com.IresGames.IresTag';
+const expectedPackageName = 'com.Milk.CCL.IresTag';
 
 const expectedCertHash = '5f44a3b4b429fec37b2dfdb2b454a3fa6012347568d57cde7ad0c8f14a18a654';
 
@@ -450,7 +450,7 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return sendAuthError(res, 401, 'Attestation failed.Make sure youve installed this title through a legitimate store and are using a device with the latest updates. ERROR CODE: 10015 TRACE ID: malformed request.');
+      return sendAuthError(res, 401, 'Attestation failed. Please ensure the game was installed through an official store and that your device is running the latest available software updates.');
     }
 
     await sendWebhook(
