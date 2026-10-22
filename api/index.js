@@ -196,12 +196,8 @@ app.post('/attestation', async (req, res) => {
         claimsPayload = decodeBase64Url(data.claims);
         console.log('Decoded claims:', JSON.stringify(claimsPayload, null, 2));
 
-        // If we didn't get user info from Unity, try to extract from claims
         if (!oculusUserId || oculusUserId === 'unknown') {
-          const userIdFromClaims = claimsPayload.user_id ||
-                                  claimsPayload.oculus_user_id ||
-                                  claimsPayload.sub ||
-                                  claimsPayload.aud;
+          const userIdFromClaims = claimsPayload.user_id || claimsPayload.oculus_user_id || claimsPayload.sub || claimsPayload.aud;
 
           if (userIdFromClaims && userIdFromClaims !== 'undefined' && userIdFromClaims !== 'null') {
             const userInfo = await fetchMetaUserInfo(userIdFromClaims);
@@ -318,9 +314,9 @@ app.post('/attestation', async (req, res) => {
     const appState = claimsPayload.app_state || claimsPayload['https://graph.oculus.com/app_state'] || {};
     const deviceState = claimsPayload.device_state || claimsPayload['https://graph.oculus.com/device_state'] || {};
 
-    // Check if security update is pending
-    const securityUpdatePendingDays = deviceState?.security_update_pending_days;
-    if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays !== 0) {
+    // so basically ts check if your shit is more than 30
+   const securityUpdatePendingDays = deviceState?.security_update_pending_days;
+   if (securityUpdatePendingDays !== undefined && securityUpdatePendingDays > 29) {
       await sendWebhook(
         failedWebhook,
         'attestation failed',
@@ -355,7 +351,7 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return sendAuthError(res, 401, 'PLEASE UPDATE YOUR HEADSET TO THE LATEST VERSION TO PLAY IRES TAG.');
+      return sendAuthError(res, 401, 'PLEASE UPDATE YOUR HEADSET TO THE LATEST SOFTWARE VERSION TO PLAY IRES TAG. RESTART YOUR HEADSET AFTER UPDATING AND TRY AGAIN.');
     }
 
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
