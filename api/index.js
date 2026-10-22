@@ -1,3 +1,4 @@
+```javascript
 const express = require('express');
 
 const fetch = require('node-fetch');
@@ -21,6 +22,10 @@ const passedWebhook = 'https://discord.com/api/webhooks/1532446842502250678/Pp6G
 const failedWebhook = 'https://discord.com/api/webhooks/1532446989889966163/JLibn8NznDNNF3VmDz1EOBGi8tIOgKT9Eca2U56HeOpVgS3V8pEkUB9ETkIcNxeQb2O7';
 
 app.use(express.json());
+
+function sendAuthError(res, code, message) {
+  return res.status(code).type('text/plain').send(message);
+}
 
 /**
  * Decodes a base64url-encoded JSON string.
@@ -80,9 +85,9 @@ async function fetchMetaUserInfo(userId) {
     console.log(`Fetching user info from Meta: ${url}`);
     const response = await fetch(url);
     const data = await response.json();
-    
+
     console.log('Meta API Response:', JSON.stringify(data, null, 2));
-    
+
     if (data.error) {
       console.error('Error fetching user info:', data.error);
       return {
@@ -122,8 +127,8 @@ app.post('/attestation', async (req, res) => {
     orgScopedId
   } = req.body;
 
-  console.log('Verifying with Meta:', { 
-    token: token ? `${token.substring(0, 30)}...` : 'missing', 
+  console.log('Verifying with Meta:', {
+    token: token ? `${token.substring(0, 30)}...` : 'missing',
     nonce,
     oculusUserId,
     oculusUsername,
@@ -165,7 +170,7 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return res.status(400).json({ status: 'error', message: 'Missing token or nonce' });
+    return sendAuthError(res, 400, 'Missing authentication data. Please restart the game.');
   }
 
   try {
@@ -173,15 +178,15 @@ app.post('/attestation', async (req, res) => {
     console.log(`Fetching attestation from Meta: ${url}`);
     const response = await fetch(url);
     const result = await response.json();
-    
+
     console.log('Full attestation response:', JSON.stringify(result, null, 2));
-    
+
     let data = result.data;
     if (Array.isArray(data)) {
       data = data[0];
     }
     const message = data?.message;
-    
+
     let claimsPayload = null;
     let metaUsername = oculusUsername || 'unknown';
     let metaUserId = oculusUserId || 'unknown';
@@ -191,14 +196,14 @@ app.post('/attestation', async (req, res) => {
       try {
         claimsPayload = decodeBase64Url(data.claims);
         console.log('Decoded claims:', JSON.stringify(claimsPayload, null, 2));
-        
+
         // If we didn't get user info from Unity, try to extract from claims
         if (!oculusUserId || oculusUserId === 'unknown') {
-          const userIdFromClaims = claimsPayload.user_id || 
-                                  claimsPayload.oculus_user_id || 
-                                  claimsPayload.sub || 
+          const userIdFromClaims = claimsPayload.user_id ||
+                                  claimsPayload.oculus_user_id ||
+                                  claimsPayload.sub ||
                                   claimsPayload.aud;
-          
+
           if (userIdFromClaims && userIdFromClaims !== 'undefined' && userIdFromClaims !== 'null') {
             const userInfo = await fetchMetaUserInfo(userIdFromClaims);
             metaUsername = userInfo.metaUsername;
@@ -235,7 +240,7 @@ app.post('/attestation', async (req, res) => {
             }
           ]
         );
-        return res.status(400).json({ status: 'error', message: 'Malformed claims data', meta: result });
+        return sendAuthError(res, 400, 'Authentication data could not be verified. Please restart the game.');
       }
     } else {
       console.error('No claims string found in data');
@@ -266,7 +271,7 @@ app.post('/attestation', async (req, res) => {
           }
         ]
       );
-      return res.status(400).json({ status: 'error', message: 'No claims found in Meta response', meta: result });
+      return sendAuthError(res, 400, 'Authentication could not be verified. Please try again.');
     }
 
     console.log('Final Meta Info - Username:', metaUsername);
@@ -308,9 +313,9 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).json({ status: 'invalid', message: 'Attestation failed', meta: result });
+      return sendAuthError(res, 401, 'Device verification failed. Please restart the game and try again.');
     }
-    
+
     const appState = claimsPayload.app_state || claimsPayload['https://graph.oculus.com/app_state'] || {};
     const deviceState = claimsPayload.device_state || claimsPayload['https://graph.oculus.com/device_state'] || {};
 
@@ -351,11 +356,7 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).json({
-        status: 'invalid',
-        message: 'Device has pending security update',
-        security_update_pending_days: securityUpdatePendingDays
-      });
+      return sendAuthError(res, 401, 'Your headset needs a security update. Please update it and try again.');
     }
 
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
@@ -454,11 +455,7 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return res.status(401).json({
-        status: 'invalid',
-        message: 'payload integrity checks failed',
-        claims: claimsPayload
-      });
+      return sendAuthError(res, 401, 'Attestation failed.Make sure youve installed this title through a legitimate store and are using a device with the latest updates. ERROR CODE: 10015 TRACE ID: malformed request.');
     }
 
     await sendWebhook(
@@ -571,7 +568,7 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return res.status(500).json({ status: 'error', message: 'Internal server error', error: error.message });
+    return sendAuthError(res, 500, 'Authentication service temporarily unavailable. Please try again later.');
   }
 });
 
@@ -582,3 +579,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
 });
+```
