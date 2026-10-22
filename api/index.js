@@ -1,4 +1,3 @@
-```javascript
 const express = require('express');
 
 const fetch = require('node-fetch');
@@ -356,7 +355,7 @@ app.post('/attestation', async (req, res) => {
         ]
       );
 
-      return sendAuthError(res, 401, 'Your headset needs a security update. Please update it and try again.');
+      return sendAuthError(res, 401, 'PLEASE UPDATE YOUR HEADSET TO THE LATEST VERSION TO PLAY IRES TAG.');
     }
 
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
@@ -568,15 +567,14 @@ app.post('/attestation', async (req, res) => {
       ]
     );
 
-    return sendAuthError(res, 500, 'Authentication service temporarily unavailable. Please try again later.');
+    return sendAuthError(res, 500, 'Attestation service temporarily unavailable. Please try again later.');
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('<body style="background-color: black; color: red;">ofc your here... yes this game has attestation.</body>');
+  res.send('<body style="background-color: black; color: red;">UNABLE TO AUTHENTICATE WITH BROTHERSHIP. REASON: Attestation failed. Make sure youre playing the game and not visting the website. Your request: malformed request. Could not get your current request.</body>');
 });
 
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
 });
-```
