@@ -355,103 +355,167 @@ app.post('/attestation', async (req, res) => {
     }
 
     const certMatch = appState?.package_cert_sha256_digest?.some((cert) => cert.toLowerCase() === expectedCertHash.toLowerCase());
+    const deviceIntegrityState = deviceState?.device_integrity_state;
 
-    if (appState?.app_integrity_state !== 'StoreRecognized' || appState?.package_id !== expectedPackageName || !certMatch || deviceState?.device_integrity_state !== 'Advanced') {
-      let failedChecks = [];
-
-      if (appState?.app_integrity_state !== 'StoreRecognized') {
-        failedChecks.push(`app integrity state: ${appState?.app_integrity_state || 'missing'}`);
+ if (deviceIntegrityState === 'Basic') {
+  await sendWebhook(
+    failedWebhook,
+    'attestation failed',
+    'device integrity state is Basic.',
+    16776960,
+    [
+      {
+        name: 'Oculus Username',
+        value: metaUsername || 'unknown',
+        inline: true
+      },
+      {
+        name: 'device integrity state',
+        value: deviceIntegrityState,
+        inline: true
       }
+    ]
+  );
 
-      if (appState?.package_id !== expectedPackageName) {
-        failedChecks.push(`package id: ${appState?.package_id || 'missing'}`);
+  return sendAuthError(
+    res,
+    401,
+    'Your device is rooted, and does not meet the required security level.\nPlease update your headset and try again.'
+  );
+}
+
+if (deviceIntegrityState === 'NotTrusted') {
+  await sendWebhook(
+    failedWebhook,
+    'attestation failed',
+    'this person has a unlocked bootloader',
+    16776960,
+    [
+      {
+        name: 'Oculus Username',
+        value: metaUsername || 'unknown',
+        inline: true
+      },
+      {
+        name: 'device integrity state',
+        value: deviceIntegrityState,
+        inline: true
       }
+    ]
+  );
 
-      if (!certMatch) {
-        failedChecks.push('certificate hash did not match');
+  return sendAuthError(
+    res,
+    401,
+    'Your bootloader is unlocked. Please lock it or use a new headset with a locked bootloader, then try again.'
+  );
+}
+
+if (
+  appState?.app_integrity_state !== 'StoreRecognized' ||
+  appState?.package_id !== expectedPackageName ||
+  !certMatch ||
+  deviceIntegrityState !== 'Advanced'
+) {
+  let failedChecks = [];
+
+  if (appState?.app_integrity_state !== 'StoreRecognized') {
+    failedChecks.push(`app integrity state: ${appState?.app_integrity_state || 'missing'}`);
+  }
+
+  if (appState?.package_id !== expectedPackageName) {
+    failedChecks.push(`package id: ${appState?.package_id || 'missing'}`);
+  }
+
+  if (!certMatch) {
+    failedChecks.push('certificate hash did not match');
+  }
+
+  if (deviceIntegrityState !== 'Advanced') {
+    failedChecks.push(`device integrity state: ${deviceIntegrityState || 'missing'}`);
+  }
+
+  await sendWebhook(
+    failedWebhook,
+    'attestation failed',
+    'the payload integrity checks failed.',
+    16776960,
+    [
+      {
+        name: 'Oculus Username',
+        value: metaUsername || 'unknown',
+        inline: true
+      },
+      {
+        name: 'Oculus User ID',
+        value: metaUserId || 'unknown',
+        inline: true
+      },
+      {
+        name: 'OrgScopedID',
+        value: metaOrgScopedId || 'unknown',
+        inline: true
+      },
+      {
+        name: 'Challenge Nonce',
+        value: nonce || 'unknown',
+        inline: true
+      },
+      {
+        name: 'failed checks',
+        value: failedChecks.length > 0
+          ? failedChecks.join('\n')
+          : 'unknown'
+      },
+      {
+        name: 'app integrity state',
+        value: appState?.app_integrity_state || 'missing',
+        inline: true
+      },
+      {
+        name: 'expected app state',
+        value: 'StoreRecognized',
+        inline: true
+      },
+      {
+        name: 'package id',
+        value: appState?.package_id || 'missing',
+        inline: true
+      },
+      {
+        name: 'expected package id',
+        value: expectedPackageName,
+        inline: true
+      },
+      {
+        name: 'device integrity state',
+        value: deviceIntegrityState || 'missing',
+        inline: true
+      },
+      {
+        name: 'expected device state',
+        value: 'Advanced',
+        inline: true
+      },
+      {
+        name: 'certificate hashes',
+        value: appState?.package_cert_sha256_digest?.length
+          ? appState.package_cert_sha256_digest.join('\n').slice(0, 1000)
+          : 'missing'
+      },
+      {
+        name: 'expected certificate',
+        value: expectedCertHash
       }
+    ]
+  );
 
-      if (deviceState?.device_integrity_state !== 'Advanced') {
-        failedChecks.push(`device integrity state: ${deviceState?.device_integrity_state || 'missing'}`);
-      }
-
-      await sendWebhook(
-        failedWebhook,
-        'attestation failed',
-        'the payload integrity checks failed.',
-        16776960,
-        [
-          {
-            name: 'Oculus Username',
-            value: metaUsername || 'unknown',
-            inline: true
-          },
-          {
-            name: 'Oculus User ID',
-            value: metaUserId || 'unknown',
-            inline: true
-          },
-          {
-            name: 'OrgScopedID',
-            value: metaOrgScopedId || 'unknown',
-            inline: true
-          },
-          {
-            name: 'Challenge Nonce',
-            value: nonce || 'unknown',
-            inline: true
-          },
-          {
-            name: 'failed checks',
-            value: failedChecks.length > 0
-              ? failedChecks.join('\n')
-              : 'unknown'
-          },
-          {
-            name: 'app integrity state',
-            value: appState?.app_integrity_state || 'missing',
-            inline: true
-          },
-          {
-            name: 'expected app state',
-            value: 'StoreRecognized',
-            inline: true
-          },
-          {
-            name: 'package id',
-            value: appState?.package_id || 'missing',
-            inline: true
-          },
-          {
-            name: 'expected package id',
-            value: expectedPackageName,
-            inline: true
-          },
-          {
-            name: 'device integrity state',
-            value: deviceState?.device_integrity_state || 'missing',
-            inline: true
-          },
-          {
-            name: 'expected device state',
-            value: 'Advanced',
-            inline: true
-          },
-          {
-            name: 'certificate hashes',
-            value: appState?.package_cert_sha256_digest?.length
-              ? appState.package_cert_sha256_digest.join('\n').slice(0, 1000)
-              : 'missing'
-          },
-          {
-            name: 'expected certificate',
-            value: expectedCertHash
-          }
-        ]
-      );
-
-      return sendAuthError(res, 401, 'Attestation failed. Please ensure the game was installed through an official store and that your device is running the latest available software updates.');
-    }
+  return sendAuthError(
+    res,
+    401,
+    'ATTESTATION FAILED\nREASON: Game or device verification failed.\nPlease ensure the game was installed through an official store and your device is supported.'
+  );
+}
 
     await sendWebhook(
       passedWebhook,
