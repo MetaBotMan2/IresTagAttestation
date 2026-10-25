@@ -242,7 +242,7 @@ app.post('/attestation', async (req, res) => {
             }
           ]
         );
-        return sendAuthError(res, 400, 'Authentication data could not be verified. Please restart the game.');
+        return sendAuthError(res, 400, 'THERE WAS A BUG, RESTART YOUR GAME TO FIX TS.');
       }
     } else {
       console.error('No claims string found in data');
