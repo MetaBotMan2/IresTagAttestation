@@ -115,6 +115,17 @@ function formatSecurityChecks(checks) {
   
   return results.join('\n');
 }
+
+/**
+ * Verifies Brothership JWT-like token
+ */
+function verifyBrothershipToken(token, expectedPayload) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return { valid: false, reason: 'Invalid token format' };
+    }
+
     const [headerB64, payloadB64, signatureB64] = parts;
     const dataToSign = headerB64 + '.' + payloadB64;
     const hmac = crypto.createHmac('sha256', BROTHERSHIP_SECRET);
@@ -574,6 +585,36 @@ app.post('/attestation', async (req, res) => {
       ]
     );
     return sendAuthError(res, 400, 'Missing authentication data. Please restart the game.');
+  }
+
+  // Validate that client sent proper Oculus data
+  if (!oculusUsername || oculusUsername === 'unknown' || 
+      !oculusUserId || oculusUserId === 'unknown' || oculusUserId === '0' ||
+      !orgScopedId || orgScopedId === 'unknown') {
+    await sendWebhook(
+      failedWebhook,
+      'attestation failed',
+      'client did not provide valid oculus user data.',
+      16776960,
+      [
+        {
+          name: 'Oculus Username',
+          value: oculusUsername || 'missing',
+          inline: true
+        },
+        {
+          name: 'Oculus User ID',
+          value: oculusUserId || 'missing',
+          inline: true
+        },
+        {
+          name: 'OrgScopedID',
+          value: orgScopedId || 'missing',
+          inline: true
+        }
+      ]
+    );
+    return sendAuthError(res, 400, 'Invalid user data. Please restart the game and ensure you are logged into your Oculus account.');
   }
 
   // Use client-provided data directly (already authenticated via PlayFab)
@@ -1086,7 +1127,7 @@ app.post('/attestation', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('<body style="background-color: black; color: red;">UNABLE TO AUTHENTICATE WITH OC. REASON: Attestation failed. Make sure you\'re playing the game and not visiting the website. Your request: malformed request. Could not get your current request.</body>');
+  res.send('<body style="background-color: black; color: red;">UNABLE TO AUTHENTICATE WITH BROTHERSHIP. REASON: Attestation failed. Make sure you\'re playing the game and not visiting the website. Your request: malformed request. Could not get your current request.</body>');
 });
 
 app.listen(port, () => {
