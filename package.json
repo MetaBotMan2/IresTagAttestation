@@ -1,13 +1,30 @@
 {
-  "name": "meta-attestation-backend",
+  "name": "device-verification-backend",
   "version": "1.0.0",
-  "description": "Backend for verifying Meta Quest attestation tokens",
-  "main": "index.js",
+  "description": "Meta Quest device verification backend with integrity checks",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node index.js"
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/device-verification-backend.git"
+  },
+  "keywords": [
+    "meta",
+    "quest",
+    "oculus",
+    "verification",
+    "integrity",
+    "security"
+  ],
+  "author": "ires",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "node-fetch": "^2.6.12"
+    "express": "^4.18.2"
   }
 }
